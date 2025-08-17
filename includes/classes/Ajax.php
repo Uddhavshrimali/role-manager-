@@ -495,7 +495,7 @@ class Ajax {
      * Export users
      */
     public static function export_users(): void {
-        if (!current_user_can('edit_users')) {
+        if (!current_user_can('edit_users') || current_user_can('data_viewer_export')) {
             self::send_error('Insufficient permissions');
         }
         
@@ -745,5 +745,79 @@ class Ajax {
         } else {
             self::send_error('Workflow manager not available');
         }
+    }
+    
+    /**
+     * Get users for parent dropdown
+     */
+    public static function get_users_for_parent(): void {
+        if (!current_user_can('edit_users')) {
+            self::send_error('Insufficient permissions');
+        }
+        
+        $nonce = $_POST['nonce'] ?? '';
+        if (!self::verify_nonce($nonce, 'rum_user_management_nonce')) {
+            self::send_error('Invalid nonce');
+        }
+        
+        $users = get_users([
+            'orderby' => 'display_name',
+            'order' => 'ASC',
+            'fields' => ['ID', 'display_name', 'user_email']
+        ]);
+        
+        self::send_success(['users' => $users]);
+    }
+    
+    /**
+     * Get sites for a specific program (for user management)
+     */
+    public static function get_sites_for_program_user_management(): void {
+        if (!current_user_can('edit_users')) {
+            self::send_error('Insufficient permissions');
+        }
+        
+        $nonce = $_POST['nonce'] ?? '';
+        if (!self::verify_nonce($nonce, 'rum_user_management_nonce')) {
+            self::send_error('Invalid nonce');
+        }
+        
+        $program = sanitize_text_field($_POST['program'] ?? '');
+        if (empty($program)) {
+            self::send_error('Program is required');
+        }
+        
+        $program_site_map = get_option('dash_program_site_map', []);
+        $sites = $program_site_map[$program] ?? [];
+        
+        self::send_success(['sites' => $sites]);
+    }
+    
+    /**
+     * Get all available sites
+     */
+    public static function get_all_sites(): void {
+        if (!current_user_can('edit_users')) {
+            self::send_error('Insufficient permissions');
+        }
+        
+        $nonce = $_POST['nonce'] ?? '';
+        if (!self::verify_nonce($nonce, 'rum_user_management_nonce')) {
+            self::send_error('Invalid nonce');
+        }
+        
+        $program_site_map = get_option('dash_program_site_map', []);
+        $sites = [];
+        
+        foreach ($program_site_map as $program_sites) {
+            if (is_array($program_sites)) {
+                $sites = array_merge($sites, $program_sites);
+            }
+        }
+        
+        $sites = array_unique($sites);
+        sort($sites);
+        
+        self::send_success(['sites' => $sites]);
     }
 } 

@@ -19,6 +19,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Define plugin constants
+define('RUM_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('RUM_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('RUM_VERSION', '2.0.0');
+
 // --- Robust error handling for required files ---
 function rum_require_file(string $file): void {
     if (file_exists($file)) {
@@ -34,6 +39,8 @@ rum_require_file(plugin_dir_path(__FILE__) . 'includes/role-manager.php');
 rum_require_file(plugin_dir_path(__FILE__) . 'includes/dashboard.php');
 rum_require_file(plugin_dir_path(__FILE__) . 'includes/user-meta.php');
 rum_require_file(plugin_dir_path(__FILE__) . 'includes/role-workflow.php');
+rum_require_file(plugin_dir_path(__FILE__) . 'includes/classes/Ajax.php');
+rum_require_file(plugin_dir_path(__FILE__) . 'includes/classes/UserManagement.php');
 
 // --- Plugin activation hook ---
 register_activation_hook(__FILE__, 'rum_plugin_activate');
@@ -94,15 +101,28 @@ add_action('init', function() {
     
     // Ensure tables exist (fallback for cases where activation didn't work)
     rum_create_tables_manually();
+    
+    // Initialize Ajax class
+    \RoleUserManager\Ajax::init();
+    
+    // Initialize UserManagement class
+    new \RoleUserManager\UserManagement();
 });
 
 add_action('admin_enqueue_scripts', 'arc_enqueue_admin_assets');
+
+// --- AJAX handlers for user management ---
+add_action('wp_ajax_rum_get_sites_for_program_user_management', ['RoleUserManager\Ajax', 'get_sites_for_program_user_management']);
+add_action('wp_ajax_rum_get_all_sites', ['RoleUserManager\Ajax', 'get_all_sites']);
+add_action('wp_ajax_rum_export_users', ['RoleUserManager\UserManagement', 'ajax_export_users']);
+add_action('wp_ajax_rum_update_user_data', ['RoleUserManager\UserManagement', 'ajax_update_user_data']);
 
 function arc_enqueue_admin_assets(string $hook): void {
     // List of plugin page slugs where you want to load assets
     $allowed_pages = [
         'upload-csv',
         'role-capabilities',
+        'user-management',
     ];
 
     if (!in_array($hook, $allowed_pages, true)) {
