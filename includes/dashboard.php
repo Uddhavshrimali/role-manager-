@@ -2334,7 +2334,7 @@ function arc_export_users_handler()
             return false;
         }
 
-        // Filter by search (match table’s client-side logic)
+        // Filter by search (match table's client-side logic)
         if (!empty($user_search)) {
             $search = mb_strtolower($user_search);
             $parent_id = get_user_meta($user->ID, 'parent_user_id', true);
@@ -2481,7 +2481,10 @@ function arc_get_sites_for_program_ajax_handler()
     $program = sanitize_text_field($_POST['program'] ?? '');
     
     if (empty($program)) {
-        wp_send_json_success(['sites' => []]);
+        // Return all sites when no program is selected
+        $options = arc_get_filter_options('');
+        $all_sites = $options['sites'] ?? [];
+        wp_send_json_success(['sites' => $all_sites]);
     }
 
     $sites = arc_get_sites_for_program($program);

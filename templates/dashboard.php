@@ -218,27 +218,25 @@ jQuery(document).ready(function($) {
         const program = $(this).val();
         const siteSelect = $('#filter_site');
         
-        if (program) {
-            $.ajax({
-                url: rum_ajax.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'rum_get_sites_for_program',
-                    program: program,
-                    nonce: rum_ajax.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        siteSelect.html('<option value=""><?php _e('All Sites', 'role-user-manager'); ?></option>');
-                        response.data.forEach(function(site) {
-                            siteSelect.append('<option value="' + site + '">' + site + '</option>');
-                        });
-                    }
+        // Always repopulate via AJAX so that empty program loads all sites
+        siteSelect.html('<option value=""><?php _e('Loading sites', 'role-user-manager'); ?>...</option>');
+        $.ajax({
+            url: rum_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'rum_get_sites_for_program',
+                program: program,
+                nonce: rum_ajax.nonce
+            },
+            success: function(response) {
+                siteSelect.html('<option value=""><?php _e('All Sites', 'role-user-manager'); ?></option>');
+                if (response && response.success && Array.isArray(response.data)) {
+                    response.data.forEach(function(site) {
+                        siteSelect.append('<option value="' + site + '">' + site + '</option>');
+                    });
                 }
-            });
-        } else {
-            siteSelect.html('<option value=""><?php _e('All Sites', 'role-user-manager'); ?></option>');
-        }
+            }
+        });
     });
 });
 </script> 

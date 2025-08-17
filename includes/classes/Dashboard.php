@@ -210,7 +210,10 @@ class Dashboard {
      */
     private function get_sites_for_program(string $program): array {
         if (empty($program)) {
-            return [];
+            global $wpdb;
+            return $wpdb->get_col(
+                "SELECT DISTINCT site FROM {$wpdb->prefix}rum_program_sites ORDER BY site"
+            );
         }
         
         global $wpdb;
@@ -270,6 +273,27 @@ class Dashboard {
      * Get available promotions for user
      */
     public function get_available_promotions(int $user_id): array {
+        // Prefer centralized workflow rules when available
+        if (class_exists('RoleAssignmentWorkflow')) {
+            $workflow = new \RoleAssignmentWorkflow();
+            $promotions = $workflow->get_available_promotions_for_user($user_id);
+            
+            // Map to expected keys for this template
+            return array_map(function($p) {
+                return [
+                    'role' => $p['role'],
+                    'display_name' => $p['name'] ?? $this->get_role_display_name($p['role']),
+                ];
+            }, $promotions);
+        }
+        
+        // Fallback: Only Program Leaders can promote, and only step-by-step
+        $current_user = wp_get_current_user();
+        $requester_roles = array_map('strtolower', $current_user->roles);
+        if (!in_array('program-leader', $requester_roles, true)) {
+            return [];
+        }
+        
         $user = get_user_by('id', $user_id);
         if (!$user) {
             return [];
@@ -277,23 +301,17 @@ class Dashboard {
         
         $current_role = $user->roles[0] ?? '';
         $promotions = [];
-        
-        // Define promotion paths
-        $promotion_paths = [
-            'frontline-staff' => ['site-supervisor', 'program-leader'],
-            'site-supervisor' => ['program-leader'],
-            'program-leader' => ['data-viewer'],
-        ];
-        
-        if (isset($promotion_paths[$current_role])) {
-            foreach ($promotion_paths[$current_role] as $promotion_role) {
-                $promotions[] = [
-                    'role' => $promotion_role,
-                    'display_name' => $this->get_role_display_name($promotion_role),
-                ];
-            }
+        if ($current_role === 'frontline-staff') {
+            $promotions[] = [
+                'role' => 'site-supervisor',
+                'display_name' => $this->get_role_display_name('site-supervisor'),
+            ];
+        } elseif ($current_role === 'site-supervisor') {
+            $promotions[] = [
+                'role' => 'program-leader',
+                'display_name' => $this->get_role_display_name('program-leader'),
+            ];
         }
-        
         return $promotions;
     }
     

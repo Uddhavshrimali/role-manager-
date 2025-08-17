@@ -322,17 +322,20 @@ class Ajax {
      */
     public static function get_sites_for_program(): void {
         $nonce = $_POST['nonce'] ?? '';
-        if (!self::verify_nonce($nonce, 'dashboard_nonce')) {
+        if (!self::verify_nonce($nonce, 'dashboard_nonce') && !self::verify_nonce($nonce, 'arc_dashboard_nonce')) {
             self::send_error('Invalid nonce');
         }
         
         $program = Validator::sanitize_text($_POST['program'] ?? '');
         
+        global $wpdb;
         if (empty($program)) {
-            self::send_error('Program is required');
+            $sites = $wpdb->get_col(
+                "SELECT DISTINCT site FROM {$wpdb->prefix}rum_program_sites ORDER BY site"
+            );
+            self::send_success($sites);
         }
         
-        global $wpdb;
         $sites = $wpdb->get_col($wpdb->prepare(
             "SELECT DISTINCT site FROM {$wpdb->prefix}rum_program_sites WHERE program = %s ORDER BY site",
             $program
@@ -586,8 +589,14 @@ class Ajax {
         }
         
         $nonce = $_POST['nonce'] ?? '';
-        if (!self::verify_nonce($nonce, 'arc_dashboard_nonce')) {
+        if (!wp_verify_nonce($nonce, 'dashboard_nonce') && !wp_verify_nonce($nonce, 'arc_dashboard_nonce')) {
             self::send_error('Invalid nonce');
+        }
+        
+        $actor = wp_get_current_user();
+        $actor_roles = array_map('strtolower', $actor->roles);
+        if (!in_array('program-leader', $actor_roles, true)) {
+            self::send_error('Only Program Leaders can promote users');
         }
         
         $user_id = intval($_POST['user_id'] ?? 0);
@@ -596,7 +605,6 @@ class Ajax {
         if (!Validator::validate_user_id($user_id)) {
             self::send_error('Invalid user ID');
         }
-        
         if (!Validator::validate_role($requested_role)) {
             self::send_error('Invalid role');
         }
@@ -606,13 +614,24 @@ class Ajax {
             self::send_error('User not found');
         }
         
-        $old_role = $user->roles[0] ?? '';
+        $current_role = $user->roles[0] ?? '';
+        
+        // Enforce step-by-step path and disallow promoting Program Leader/Data Viewer
+        $allowed = (
+            ($current_role === 'frontline-staff' && $requested_role === 'site-supervisor') ||
+            ($current_role === 'site-supervisor' && $requested_role === 'program-leader')
+        );
+        
+        if (!$allowed) {
+            self::send_error('This promotion is not allowed');
+        }
+        
+        $old_role = $current_role;
         $user->set_role($requested_role);
         
         // Set the promoter as the parent of the promoted user
         $promoter_id = get_current_user_id();
         update_user_meta($user_id, 'parent_user_id', $promoter_id);
-        error_log("Set parent user to promoter: {$promoter_id} for user: {$user_id}");
         
         Logger::log_role_change($user_id, $old_role, $requested_role);
         self::send_success(null, 'User promoted successfully');
