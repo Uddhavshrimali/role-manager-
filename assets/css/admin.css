@@ -5,6 +5,348 @@
     margin: 0 auto;
     padding: 20px;
 }
+
+/* Enhanced User Details Modal */
+.user-details-modal-content {
+    max-width: 800px;
+    width: 100%;
+}
+
+.modal-tabs {
+    display: flex;
+    border-bottom: 2px solid #e0e0e0;
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    background: none;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.tab-button:hover {
+    color: #333;
+    background: rgba(0, 123, 255, 0.05);
+}
+
+.tab-button.active {
+    color: #007bff;
+    border-bottom-color: #007bff;
+    background: rgba(0, 123, 255, 0.1);
+}
+
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.user-info-grid {
+    display: grid;
+    gap: 25px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.info-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+}
+
+.info-section h4 {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.info-row .label {
+    font-weight: 500;
+    color: #666;
+    min-width: 120px;
+}
+
+.info-row .value {
+    color: #333;
+    font-weight: 400;
+    text-align: right;
+    flex: 1;
+}
+
+.role-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.role-badge.role-administrator {
+    background: #dc3545;
+    color: white;
+}
+
+.role-badge.role-data-viewer {
+    background: #6f42c1;
+    color: white;
+}
+
+.role-badge.role-program-leader {
+    background: #28a745;
+    color: white;
+}
+
+.role-badge.role-site-supervisor {
+    background: #ffc107;
+    color: #212529;
+}
+
+.role-badge.role-frontline-staff {
+    background: #17a2b8;
+    color: white;
+}
+
+.training-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 15px 10px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.stat-number {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    color: #007bff;
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Descendants Section */
+.descendants-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.descendants-section h4 {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.descendants-list {
+    max-height: 400px;
+    overflow-y: auto;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.descendant-item {
+    padding: 15px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.descendant-item:last-child {
+    border-bottom: none;
+}
+
+.descendant-info {
+    line-height: 1.6;
+}
+
+.descendants-tree-level.level-1 .descendant-item {
+    margin-left: 20px;
+    border-left: 2px solid #e9ecef;
+}
+
+.descendants-tree-level.level-2 .descendant-item {
+    margin-left: 40px;
+    border-left: 2px solid #dee2e6;
+}
+
+.descendants-tree-level.level-3 .descendant-item {
+    margin-left: 60px;
+    border-left: 2px solid #ced4da;
+}
+
+/* Export Section */
+.export-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.export-section h4 {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.export-section p {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.export-options {
+    margin-bottom: 25px;
+}
+
+.export-options label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: 500;
+    color: #333;
+    cursor: pointer;
+}
+
+.export-options input[type="checkbox"] {
+    margin-right: 8px;
+    transform: scale(1.1);
+}
+
+.export-actions {
+    text-align: center;
+}
+
+.export-actions .button {
+    padding: 12px 25px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Responsive Design for Modal */
+@media (max-width: 768px) {
+    .user-details-modal-content {
+        max-width: 95%;
+        margin: 10px;
+    }
+    
+    .modal-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .tab-button {
+        flex: 1;
+        min-width: 120px;
+        padding: 10px 15px;
+        font-size: 13px;
+    }
+    
+    .user-info-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .info-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+    
+    .info-row .value {
+        text-align: left;
+    }
+    
+    .training-stats {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    
+    .descendants-list {
+        max-height: 300px;
+    }
+    
+    .descendants-tree-level.level-1 .descendant-item {
+        margin-left: 10px;
+    }
+    
+    .descendants-tree-level.level-2 .descendant-item {
+        margin-left: 20px;
+    }
+    
+    .descendants-tree-level.level-3 .descendant-item {
+        margin-left: 30px;
+    }
+}
+
+/* Loading State */
+.modal-content.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.modal-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #666;
+}
+
+.modal-loading::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    border: 2px solid #e0e0e0;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 select#arc_sites{
 	width:100%;
 }
