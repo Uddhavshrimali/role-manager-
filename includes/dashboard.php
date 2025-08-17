@@ -1986,6 +1986,54 @@ function arc_get_user_ld_data_handler()
     $html .= '</div>';
     $html .= '</div><hr>';
 
+    // Descendants section for Program Leader / Site Supervisor
+    $viewed_user_roles = array_map('strtolower', $user->roles);
+    if (in_array('program-leader', $viewed_user_roles) || in_array('site-supervisor', $viewed_user_roles)) {
+        $all_users_for_desc = get_users(['orderby' => 'display_name', 'order' => 'ASC', 'fields' => 'all']);
+        $descendant_ids = arc_get_descendant_user_ids($user_id, $all_users_for_desc);
+
+        $html .= '<h6>' . __('Descendants', 'role-user-manager') . ' (' . count($descendant_ids) . ')</h6>';
+
+        if (!empty($descendant_ids)) {
+            $html .= '<div class="tablediv"><table class="table table-sm">';
+            $html .= '<thead><tr>'
+                . '<th>' . __('Name', 'role-user-manager') . '</th>'
+                . '<th>' . __('Role', 'role-user-manager') . '</th>'
+                . '<th>' . __('Program', 'role-user-manager') . '</th>'
+                . '<th>' . __('Site(s)', 'role-user-manager') . '</th>'
+                . '</tr></thead>';
+            $html .= '<tbody>';
+            foreach ($descendant_ids as $child_id) {
+                $child = get_user_by('id', $child_id);
+                if (!$child) continue;
+                $child_program = get_user_meta($child_id, 'programme', true);
+                $child_sites = get_user_meta($child_id, 'sites', true);
+                if (!is_array($child_sites)) $child_sites = [];
+                $child_sites_display = !empty($child_sites) ? implode(', ', array_map('trim', $child_sites)) : '—';
+                $html .= '<tr>';
+                $html .= '<td>' . esc_html($child->display_name) . '</td>';
+                $html .= '<td>' . esc_html(implode(', ', $child->roles)) . '</td>';
+                $html .= '<td>' . esc_html($child_program ?: '—') . '</td>';
+                $html .= '<td>' . esc_html($child_sites_display) . '</td>';
+                $html .= '</tr>';
+            }
+            $html .= '</tbody></table></div>';
+
+            // Admin-only export descendants button
+            if (in_array('administrator', $current_user_roles)) {
+                $html .= '<div class="mt-2">'
+                    . '<button type="button" class="btn btn-success btn-export-descendants" data-target-user-id="' . intval($user_id) . '">'
+                    . __('Export Descendants (CSV)', 'role-user-manager')
+                    . '</button>'
+                    . '</div>';
+            }
+        } else {
+            $html .= '<p class="text-muted">' . __('No descendants found.', 'role-user-manager') . '</p>';
+        }
+
+        $html .= '<hr>';
+    }
+
     // Initialize totals
     $total_hours = 0;
     $total_points = 0;
@@ -2334,7 +2382,7 @@ function arc_export_users_handler()
             return false;
         }
 
-        // Filter by search (match table’s client-side logic)
+        // Filter by search (match table's client-side logic)
         if (!empty($user_search)) {
             $search = mb_strtolower($user_search);
             $parent_id = get_user_meta($user->ID, 'parent_user_id', true);
