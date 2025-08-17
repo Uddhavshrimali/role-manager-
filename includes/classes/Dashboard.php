@@ -270,39 +270,29 @@ class Dashboard {
      * Get available promotions for user
      */
     public function get_available_promotions(int $user_id): array {
-        $user = get_user_by('id', $user_id);
-        if (!$user) {
-            return [];
+        // Use the RoleAssignmentWorkflow class to get proper promotions
+        // based on current user's permissions and role hierarchy
+        if (class_exists('RoleAssignmentWorkflow')) {
+            $workflow = new \RoleAssignmentWorkflow();
+            return $workflow->get_available_promotions_for_user($user_id);
         }
         
-        $current_role = $user->roles[0] ?? '';
-        $promotions = [];
-        
-        // Define promotion paths
-        $promotion_paths = [
-            'frontline-staff' => ['site-supervisor', 'program-leader'],
-            'site-supervisor' => ['program-leader'],
-            'program-leader' => ['data-viewer'],
-        ];
-        
-        if (isset($promotion_paths[$current_role])) {
-            foreach ($promotion_paths[$current_role] as $promotion_role) {
-                $promotions[] = [
-                    'role' => $promotion_role,
-                    'display_name' => $this->get_role_display_name($promotion_role),
-                ];
-            }
-        }
-        
-        return $promotions;
+        return [];
     }
     
     /**
      * Get role display name
      */
     public function get_role_display_name(string $role): string {
-        $roles = wp_roles()->get_names();
-        return $roles[$role] ?? ucwords(str_replace('-', ' ', $role));
+        $role_names = [
+            'frontline-staff' => __('Frontliner', 'role-user-manager'),
+            'site-supervisor' => __('Site Supervisor', 'role-user-manager'),
+            'program-leader' => __('Program Leader', 'role-user-manager'),
+            'data-viewer' => __('Data Viewer', 'role-user-manager'),
+            'administrator' => __('Administrator', 'role-user-manager'),
+        ];
+        
+        return $role_names[$role] ?? ucwords(str_replace('-', ' ', $role));
     }
     
     /**

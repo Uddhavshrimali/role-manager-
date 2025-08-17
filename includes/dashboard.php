@@ -277,7 +277,7 @@ $required_roles = [
     'data-viewer'     => __('Data Viewer', 'role-user-manager'),
     'program-leader'  => __('Program Leader', 'role-user-manager'),
     'site-supervisor' => __('Site Supervisor', 'role-user-manager'),
-    'frontline-staff' => __('Frontline Staff', 'role-user-manager'),
+    'frontline-staff' => __('Frontliner', 'role-user-manager'),
 ];
 
 $group_leader_role = get_role('group_leader');
@@ -4120,7 +4120,7 @@ add_action('wp_ajax_arc_get_historical_data', function() {
             CASE 
                 WHEN meta_value LIKE '%program-leader%' THEN 'Program Leader'
                 WHEN meta_value LIKE '%site-supervisor%' THEN 'Site Supervisor'
-                WHEN meta_value LIKE '%frontline-staff%' THEN 'Frontline Staff'
+                WHEN meta_value LIKE '%frontline-staff%' THEN 'Frontliner'
                 WHEN meta_value LIKE '%data-viewer%' THEN 'Data Viewer'
                 ELSE 'Other'
             END as role,
@@ -4189,7 +4189,7 @@ add_action('wp_ajax_arc_export_analytics_data', function() {
             CASE 
                 WHEN cap.meta_value LIKE '%program-leader%' THEN 'Program Leader'
                 WHEN cap.meta_value LIKE '%site-supervisor%' THEN 'Site Supervisor'
-                WHEN cap.meta_value LIKE '%frontline-staff%' THEN 'Frontline Staff'
+                WHEN cap.meta_value LIKE '%frontline-staff%' THEN 'Frontliner'
                 WHEN cap.meta_value LIKE '%data-viewer%' THEN 'Data Viewer'
                 ELSE 'Other'
             END as role,
@@ -4357,7 +4357,7 @@ add_action('wp_ajax_arc_get_site_detail_data', function() {
                 } elseif (strpos($user->capabilities, 'site-supervisor') !== false) {
                     $role_counts['Site Supervisor'] = ($role_counts['Site Supervisor'] ?? 0) + 1;
                 } elseif (strpos($user->capabilities, 'frontline-staff') !== false) {
-                    $role_counts['Frontline Staff'] = ($role_counts['Frontline Staff'] ?? 0) + 1;
+                    $role_counts['Frontliner'] = ($role_counts['Frontliner'] ?? 0) + 1;
                 } elseif (strpos($user->capabilities, 'data-viewer') !== false) {
                     $role_counts['Data Viewer'] = ($role_counts['Data Viewer'] ?? 0) + 1;
                 }
@@ -4442,7 +4442,7 @@ add_action('wp_ajax_arc_get_site_detail_data', function() {
                 } elseif (strpos($user->capabilities, 'site-supervisor') !== false) {
                     $role = 'Site Supervisor';
                 } elseif (strpos($user->capabilities, 'frontline-staff') !== false) {
-                    $role = 'Frontline Staff';
+                    $role = 'Frontliner';
                 } elseif (strpos($user->capabilities, 'data-viewer') !== false) {
                     $role = 'Data Viewer';
                 }

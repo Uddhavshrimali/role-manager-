@@ -5,9 +5,9 @@ declare(strict_types=1);
  * Role Assignment Workflows System
  * 
  * Handles promotion requests and approvals for role hierarchy:
- * - Frontline → Site Supervisor: selectable only by Program Leader or Admin
- * - Site Supervisor → Program Leader: not permitted; must request Admin
- * - Program Leader role: assigned by Admin only
+ * - Frontliner → Site Supervisor → Program Leader (promotion path)
+ * - Program Leader has authority to promote Frontliner and Site Supervisor
+ * - Data Viewer and Program Leader cannot be promoted to any higher role
  */
 
 class RoleAssignmentWorkflow
@@ -314,41 +314,33 @@ class RoleAssignmentWorkflow
         switch ($current_role) {
             case 'frontline-staff':
                 if ($requested_role !== 'site-supervisor') {
-                    return ['valid' => false, 'message' => __('Frontline staff can only be promoted to Site Supervisor.', 'role-user-manager')];
+                    return ['valid' => false, 'message' => __('Frontliner can only be promoted to Site Supervisor.', 'role-user-manager')];
                 }
-                // Program Leaders and Site Supervisors can request Frontline to Site Supervisor promotion
-                if (!in_array('program-leader', $requester_roles) && !in_array('site-supervisor', $requester_roles) && !in_array('administrator', $requester_roles)) {
-                    return ['valid' => false, 'message' => __('Only Program Leaders, Site Supervisors, or Administrators can request Frontline Staff to Site Supervisor promotion.', 'role-user-manager')];
+                // Program Leaders can directly promote Frontliner to Site Supervisor
+                if (in_array('program-leader', $requester_roles) || in_array('administrator', $requester_roles)) {
+                    return ['valid' => true, 'message' => '', 'requires_approval' => false];
                 }
-                // If requester is not admin, this will require approval
-                if (!in_array('administrator', $requester_roles)) {
-                    return ['valid' => true, 'message' => '', 'requires_approval' => true];
-                }
-                break;
+                // Other roles cannot promote Frontliner
+                return ['valid' => false, 'message' => __('Only Program Leaders or Administrators can promote Frontliner to Site Supervisor.', 'role-user-manager')];
 
             case 'site-supervisor':
                 if ($requested_role !== 'program-leader') {
-                    return ['valid' => false, 'message' => __('Site Supervisors can only be promoted to Program Leader.', 'role-user-manager')];
+                    return ['valid' => false, 'message' => __('Site Supervisor can only be promoted to Program Leader.', 'role-user-manager')];
                 }
-                // Program Leaders and Site Supervisors can request Site Supervisor to Program Leader promotion
-                if (!in_array('program-leader', $requester_roles) && !in_array('site-supervisor', $requester_roles) && !in_array('administrator', $requester_roles)) {
-                    return ['valid' => false, 'message' => __('Only Program Leaders, Site Supervisors, or Administrators can request Site Supervisor to Program Leader promotion.', 'role-user-manager')];
+                // Program Leaders can directly promote Site Supervisor to Program Leader
+                if (in_array('program-leader', $requester_roles) || in_array('administrator', $requester_roles)) {
+                    return ['valid' => true, 'message' => '', 'requires_approval' => false];
                 }
-                // If requester is not admin, this will require approval
-                if (!in_array('administrator', $requester_roles)) {
-                    return ['valid' => true, 'message' => '', 'requires_approval' => true];
-                }
-                break;
+                // Other roles cannot promote Site Supervisor
+                return ['valid' => false, 'message' => __('Only Program Leaders or Administrators can promote Site Supervisor to Program Leader.', 'role-user-manager')];
 
             case 'program-leader':
-                if ($requested_role !== 'data-viewer') {
-                    return ['valid' => false, 'message' => __('Program Leaders can only be promoted to Data Viewer.', 'role-user-manager')];
-                }
-                // Only Administrators can promote Program Leaders to Data Viewer
-                if (!in_array('administrator', $requester_roles)) {
-                    return ['valid' => false, 'message' => __('Only Administrators can promote Program Leaders to Data Viewer.', 'role-user-manager')];
-                }
-                break;
+                // Program Leaders cannot be promoted to any higher role
+                return ['valid' => false, 'message' => __('Program Leaders cannot be promoted to any higher role.', 'role-user-manager')];
+
+            case 'data-viewer':
+                // Data Viewers cannot be promoted to any higher role
+                return ['valid' => false, 'message' => __('Data Viewers cannot be promoted to any higher role.', 'role-user-manager')];
 
             default:
                 return ['valid' => false, 'message' => __('Invalid current role for promotion.', 'role-user-manager')];
@@ -368,6 +360,7 @@ class RoleAssignmentWorkflow
         
         // Return the highest role in hierarchy
         if (in_array('administrator', $roles)) return 'administrator';
+        if (in_array('data-viewer', $roles)) return 'data-viewer';
         if (in_array('program-leader', $roles)) return 'program-leader';
         if (in_array('site-supervisor', $roles)) return 'site-supervisor';
         if (in_array('frontline-staff', $roles)) return 'frontline-staff';
@@ -378,9 +371,10 @@ class RoleAssignmentWorkflow
     private function get_role_display_name(string $role): string
     {
         $role_names = [
-            'frontline-staff' => __('Frontline Staff', 'role-user-manager'),
+            'frontline-staff' => __('Frontliner', 'role-user-manager'),
             'site-supervisor' => __('Site Supervisor', 'role-user-manager'),
             'program-leader' => __('Program Leader', 'role-user-manager'),
+            'data-viewer' => __('Data Viewer', 'role-user-manager'),
             'administrator' => __('Administrator', 'role-user-manager'),
         ];
         
@@ -495,38 +489,33 @@ class RoleAssignmentWorkflow
         
         switch ($current_role) {
             case 'frontline-staff':
-                // Program Leaders, Site Supervisors, and Administrators can request Frontline to Site Supervisor
-                if (in_array('program-leader', $requester_roles) || in_array('site-supervisor', $requester_roles) || in_array('administrator', $requester_roles)) {
-                    $requires_approval = !in_array('administrator', $requester_roles);
+                // Only Program Leaders and Administrators can promote Frontliner to Site Supervisor
+                if (in_array('program-leader', $requester_roles) || in_array('administrator', $requester_roles)) {
                     $available_promotions[] = [
                         'role' => 'site-supervisor',
                         'name' => __('Site Supervisor', 'role-user-manager'),
-                        'requires_approval' => $requires_approval
+                        'requires_approval' => false // Direct promotion allowed
                     ];
                 }
                 break;
                 
             case 'site-supervisor':
-                // Program Leaders, Site Supervisors, and Administrators can request Site Supervisor to Program Leader
-                if (in_array('program-leader', $requester_roles) || in_array('site-supervisor', $requester_roles) || in_array('administrator', $requester_roles)) {
-                    $requires_approval = !in_array('administrator', $requester_roles);
+                // Only Program Leaders and Administrators can promote Site Supervisor to Program Leader
+                if (in_array('program-leader', $requester_roles) || in_array('administrator', $requester_roles)) {
                     $available_promotions[] = [
                         'role' => 'program-leader',
                         'name' => __('Program Leader', 'role-user-manager'),
-                        'requires_approval' => $requires_approval
+                        'requires_approval' => false // Direct promotion allowed
                     ];
                 }
                 break;
                 
             case 'program-leader':
-                // Only Administrators can promote Program Leaders to Data Viewer
-                if (in_array('administrator', $requester_roles)) {
-                    $available_promotions[] = [
-                        'role' => 'data-viewer',
-                        'name' => __('Data Viewer', 'role-user-manager'),
-                        'requires_approval' => false
-                    ];
-                }
+                // Program Leaders cannot be promoted to any higher role
+                break;
+                
+            case 'data-viewer':
+                // Data Viewers cannot be promoted to any higher role
                 break;
         }
         
