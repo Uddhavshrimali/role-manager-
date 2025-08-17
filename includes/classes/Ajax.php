@@ -32,6 +32,7 @@ class Ajax {
         add_action('wp_ajax_rum_remove_user_from_course', [self::class, 'remove_user_from_course']);
         add_action('wp_ajax_rum_bulk_user_action', [self::class, 'bulk_user_action']);
         add_action('wp_ajax_rum_export_users', [self::class, 'export_users']);
+        add_action('wp_ajax_rum_export_user_descendants', [self::class, 'export_user_descendants']);
         
         // Workflow AJAX
         add_action('wp_ajax_rum_approve_promotion_request', [self::class, 'approve_promotion_request']);
@@ -269,19 +270,361 @@ class Ajax {
         if (!$user) {
             self::send_error('User not found');
         }
+
+        // Get current user's role for permission checking
+        $current_user = wp_get_current_user();
+        $current_user_roles = $current_user->roles;
+        $user_role = $user->roles[0] ?? '';
         
+        // Get basic user data
         $user_data = [
             'id' => $user->ID,
             'username' => $user->user_login,
             'email' => $user->user_email,
             'display_name' => $user->display_name,
-            'role' => $user->roles[0] ?? '',
+            'role' => $user_role,
+            'role_display' => self::get_role_display_name($user_role),
             'program' => get_user_meta($user->ID, 'program', true),
             'site' => get_user_meta($user->ID, 'site', true),
             'registration_date' => $user->user_registered,
+            'parent_user_id' => get_user_meta($user->ID, 'parent_user_id', true),
+        ];
+
+        // Get parent user details
+        if ($user_data['parent_user_id']) {
+            $parent_user = get_user_by('id', $user_data['parent_user_id']);
+            $user_data['parent_name'] = $parent_user ? $parent_user->display_name : 'Unknown';
+        }
+
+        // Get LearnDash data if available
+        if (function_exists('learndash_user_get_enrolled_courses')) {
+            $enrolled_courses = learndash_user_get_enrolled_courses($user->ID);
+            $completed_courses = [];
+            $certificates = [];
+            
+            foreach ($enrolled_courses as $course_id) {
+                if (learndash_course_completed($user->ID, $course_id)) {
+                    $completed_courses[] = $course_id;
+                }
+            }
+            
+            // Get certificates
+            if (function_exists('learndash_get_user_certificates')) {
+                $certificates = learndash_get_user_certificates($user->ID);
+            }
+            
+            $user_data['training'] = [
+                'courses_enrolled' => count($enrolled_courses),
+                'courses_completed' => count($completed_courses),
+                'certificates_earned' => count($certificates),
+                'completion_rate' => count($enrolled_courses) > 0 ? round((count($completed_courses) / count($enrolled_courses)) * 100, 1) : 0
+            ];
+        }
+
+        // Get descendants if user is program leader or site supervisor
+        $descendants = [];
+        if (in_array($user_role, ['program-leader', 'site-supervisor'])) {
+            $descendants = self::get_user_descendants($user->ID);
+        }
+        $user_data['descendants'] = $descendants;
+
+        // Check if current user can export (admin, program leader, or data viewer)
+        $can_export = in_array('administrator', $current_user_roles) || 
+                     in_array('program-leader', $current_user_roles) || 
+                     in_array('data-viewer', $current_user_roles);
+        $user_data['can_export'] = $can_export;
+
+        // Generate HTML content for the modal
+        $html = self::generate_user_details_html($user_data);
+        
+        self::send_success(['user_data' => $user_data, 'html' => $html]);
+    }
+
+    /**
+     * Get role display name
+     */
+    private static function get_role_display_name(string $role): string {
+        $role_names = [
+            'administrator' => __('Administrator', 'role-user-manager'),
+            'data-viewer' => __('Data Viewer', 'role-user-manager'),
+            'program-leader' => __('Program Leader', 'role-user-manager'),
+            'site-supervisor' => __('Site Supervisor', 'role-user-manager'),
+            'frontline-staff' => __('Frontline Staff', 'role-user-manager'),
         ];
         
-        self::send_success($user_data);
+        return $role_names[$role] ?? ucfirst(str_replace(['-', '_'], ' ', $role));
+    }
+
+    /**
+     * Get user descendants
+     */
+    private static function get_user_descendants(int $parent_id): array {
+        $all_users = get_users(['fields' => ['ID', 'display_name', 'user_email', 'user_registered']]);
+        return self::get_descendant_user_ids_with_details($parent_id, $all_users);
+    }
+
+    /**
+     * Get descendant user IDs with details
+     */
+    private static function get_descendant_user_ids_with_details(int $parent_id, array $all_users, int $depth = 0): array {
+        if ($depth > 10) { // Prevent infinite loops
+            return [];
+        }
+
+        $descendants = [];
+        foreach ($all_users as $user) {
+            $user_parent = get_user_meta($user->ID, 'parent_user_id', true);
+            if ($user_parent && intval($user_parent) === intval($parent_id)) {
+                $user_role = get_user_meta($user->ID, 'wp_capabilities', true);
+                $user_role = is_array($user_role) ? array_keys($user_role)[0] : '';
+                
+                $descendant = [
+                    'id' => $user->ID,
+                    'display_name' => $user->display_name,
+                    'email' => $user->user_email,
+                    'role' => $user_role,
+                    'role_display' => self::get_role_display_name($user_role),
+                    'program' => get_user_meta($user->ID, 'program', true),
+                    'site' => get_user_meta($user->ID, 'site', true),
+                    'registration_date' => $user->user_registered,
+                    'depth' => $depth + 1,
+                    'children' => self::get_descendant_user_ids_with_details($user->ID, $all_users, $depth + 1)
+                ];
+                
+                // Get training data if LearnDash is available
+                if (function_exists('learndash_user_get_enrolled_courses')) {
+                    $enrolled = learndash_user_get_enrolled_courses($user->ID);
+                    $completed = 0;
+                    foreach ($enrolled as $course_id) {
+                        if (learndash_course_completed($user->ID, $course_id)) {
+                            $completed++;
+                        }
+                    }
+                    $descendant['training'] = [
+                        'courses_enrolled' => count($enrolled),
+                        'courses_completed' => $completed,
+                        'completion_rate' => count($enrolled) > 0 ? round(($completed / count($enrolled)) * 100, 1) : 0
+                    ];
+                }
+                
+                $descendants[] = $descendant;
+            }
+        }
+        return $descendants;
+    }
+
+    /**
+     * Generate HTML content for user details modal
+     */
+    private static function generate_user_details_html(array $user_data): string {
+        ob_start();
+        ?>
+        <div class="user-details-modal-content">
+            <!-- Navigation Tabs -->
+            <div class="modal-tabs">
+                <button class="tab-button active" data-tab="details"><?php _e('User Details', 'role-user-manager'); ?></button>
+                <?php if (!empty($user_data['descendants'])): ?>
+                    <button class="tab-button" data-tab="descendants"><?php _e('Team Members', 'role-user-manager'); ?> (<?php echo count($user_data['descendants']); ?>)</button>
+                <?php endif; ?>
+                <?php if ($user_data['can_export'] && !empty($user_data['descendants'])): ?>
+                    <button class="tab-button" data-tab="export"><?php _e('Export', 'role-user-manager'); ?></button>
+                <?php endif; ?>
+            </div>
+
+            <!-- User Details Tab -->
+            <div class="tab-content active" id="details-tab">
+                <div class="user-info-grid">
+                    <div class="info-section">
+                        <h4><?php _e('Basic Information', 'role-user-manager'); ?></h4>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Name:', 'role-user-manager'); ?></span>
+                            <span class="value"><?php echo esc_html($user_data['display_name']); ?></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Email:', 'role-user-manager'); ?></span>
+                            <span class="value"><?php echo esc_html($user_data['email']); ?></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Username:', 'role-user-manager'); ?></span>
+                            <span class="value"><?php echo esc_html($user_data['username']); ?></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Role:', 'role-user-manager'); ?></span>
+                            <span class="value role-badge role-<?php echo esc_attr($user_data['role']); ?>">
+                                <?php echo esc_html($user_data['role_display']); ?>
+                            </span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Registration Date:', 'role-user-manager'); ?></span>
+                            <span class="value"><?php echo esc_html(date('M j, Y', strtotime($user_data['registration_date']))); ?></span>
+                        </div>
+                    </div>
+
+                    <div class="info-section">
+                        <h4><?php _e('Assignment', 'role-user-manager'); ?></h4>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Program:', 'role-user-manager'); ?></span>
+                            <span class="value"><?php echo esc_html($user_data['program'] ?: 'Not assigned'); ?></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Site:', 'role-user-manager'); ?></span>
+                            <span class="value"><?php echo esc_html($user_data['site'] ?: 'Not assigned'); ?></span>
+                        </div>
+                        <?php if (!empty($user_data['parent_name'])): ?>
+                        <div class="info-row">
+                            <span class="label"><?php _e('Reports To:', 'role-user-manager'); ?></span>
+                            <span class="value"><?php echo esc_html($user_data['parent_name']); ?></span>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if (isset($user_data['training'])): ?>
+                    <div class="info-section">
+                        <h4><?php _e('Training Progress', 'role-user-manager'); ?></h4>
+                        <div class="training-stats">
+                            <div class="stat-item">
+                                <span class="stat-number"><?php echo esc_html($user_data['training']['courses_enrolled']); ?></span>
+                                <span class="stat-label"><?php _e('Enrolled', 'role-user-manager'); ?></span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number"><?php echo esc_html($user_data['training']['courses_completed']); ?></span>
+                                <span class="stat-label"><?php _e('Completed', 'role-user-manager'); ?></span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number"><?php echo esc_html($user_data['training']['certificates_earned']); ?></span>
+                                <span class="stat-label"><?php _e('Certificates', 'role-user-manager'); ?></span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number"><?php echo esc_html($user_data['training']['completion_rate']); ?>%</span>
+                                <span class="stat-label"><?php _e('Completion', 'role-user-manager'); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Descendants Tab -->
+            <?php if (!empty($user_data['descendants'])): ?>
+            <div class="tab-content" id="descendants-tab">
+                <div class="descendants-section">
+                    <h4><?php _e('Team Members', 'role-user-manager'); ?></h4>
+                    <div class="descendants-list">
+                        <?php echo self::render_descendants_tree($user_data['descendants']); ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Export Tab -->
+            <?php if ($user_data['can_export'] && !empty($user_data['descendants'])): ?>
+            <div class="tab-content" id="export-tab">
+                <div class="export-section">
+                    <h4><?php _e('Export Team Data', 'role-user-manager'); ?></h4>
+                    <p><?php _e('Export data for this user and all their team members.', 'role-user-manager'); ?></p>
+                    
+                    <div class="export-options">
+                        <label>
+                            <input type="checkbox" name="include_basic" checked> 
+                            <?php _e('Basic Information (Name, Email, Role)', 'role-user-manager'); ?>
+                        </label>
+                        <label>
+                            <input type="checkbox" name="include_assignment" checked> 
+                            <?php _e('Assignment (Program, Site)', 'role-user-manager'); ?>
+                        </label>
+                        <label>
+                            <input type="checkbox" name="include_training" checked> 
+                            <?php _e('Training Progress', 'role-user-manager'); ?>
+                        </label>
+                    </div>
+                    
+                    <div class="export-actions">
+                        <button type="button" class="button button-primary" onclick="exportUserData(<?php echo $user_data['id']; ?>)">
+                            <?php _e('Export as CSV', 'role-user-manager'); ?>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            // Tab switching functionality
+            $('.tab-button').on('click', function() {
+                var tabName = $(this).data('tab');
+                
+                // Update active tab button
+                $('.tab-button').removeClass('active');
+                $(this).addClass('active');
+                
+                // Update active tab content
+                $('.tab-content').removeClass('active');
+                $('#' + tabName + '-tab').addClass('active');
+            });
+        });
+
+        function exportUserData(userId) {
+            var options = {
+                include_basic: $('input[name="include_basic"]').is(':checked'),
+                include_assignment: $('input[name="include_assignment"]').is(':checked'),
+                include_training: $('input[name="include_training"]').is(':checked')
+            };
+            
+            // Create form and submit
+            var form = $('<form>', {
+                method: 'POST',
+                action: ajaxurl
+            });
+            
+            form.append($('<input>', { type: 'hidden', name: 'action', value: 'rum_export_user_descendants' }));
+            form.append($('<input>', { type: 'hidden', name: 'user_id', value: userId }));
+            form.append($('<input>', { type: 'hidden', name: 'nonce', value: '<?php echo wp_create_nonce('export_user_descendants'); ?>' }));
+            form.append($('<input>', { type: 'hidden', name: 'options', value: JSON.stringify(options) }));
+            
+            $('body').append(form);
+            form.submit();
+            form.remove();
+        }
+        </script>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Render descendants tree
+     */
+    private static function render_descendants_tree(array $descendants, int $level = 0): string {
+        $html = '<div class="descendants-tree-level level-' . $level . '">';
+        
+        foreach ($descendants as $descendant) {
+            $indent = str_repeat('&nbsp;&nbsp;&nbsp;&nbsp;', $level);
+            $html .= '<div class="descendant-item">';
+            $html .= '<div class="descendant-info">';
+            $html .= $indent . '<strong>' . esc_html($descendant['display_name']) . '</strong>';
+            $html .= ' <span class="role-badge role-' . esc_attr($descendant['role']) . '">' . esc_html($descendant['role_display']) . '</span>';
+            $html .= '<br>' . $indent . '<small>' . esc_html($descendant['email']) . '</small>';
+            if ($descendant['program']) {
+                $html .= '<br>' . $indent . '<small>Program: ' . esc_html($descendant['program']) . '</small>';
+            }
+            if ($descendant['site']) {
+                $html .= '<br>' . $indent . '<small>Site: ' . esc_html($descendant['site']) . '</small>';
+            }
+            if (isset($descendant['training'])) {
+                $html .= '<br>' . $indent . '<small>Training: ' . $descendant['training']['courses_completed'] . '/' . $descendant['training']['courses_enrolled'] . ' (' . $descendant['training']['completion_rate'] . '%)</small>';
+            }
+            $html .= '</div>';
+            
+            // Render children recursively
+            if (!empty($descendant['children'])) {
+                $html .= self::render_descendants_tree($descendant['children'], $level + 1);
+            }
+            
+            $html .= '</div>';
+        }
+        
+        $html .= '</div>';
+        return $html;
     }
     
     /**
@@ -819,5 +1162,194 @@ class Ajax {
         sort($sites);
         
         self::send_success(['sites' => $sites]);
+    }
+
+    /**
+     * Export user descendants data as CSV
+     */
+    public static function export_user_descendants(): void {
+        // Check permissions
+        $current_user = wp_get_current_user();
+        $current_user_roles = $current_user->roles;
+        
+        $can_export = in_array('administrator', $current_user_roles) || 
+                     in_array('program-leader', $current_user_roles) || 
+                     in_array('data-viewer', $current_user_roles);
+                     
+        if (!$can_export) {
+            self::send_error('Insufficient permissions to export data');
+        }
+        
+        // Verify nonce
+        $nonce = $_POST['nonce'] ?? '';
+        if (!wp_verify_nonce($nonce, 'export_user_descendants')) {
+            self::send_error('Invalid nonce');
+        }
+        
+        $user_id = intval($_POST['user_id'] ?? 0);
+        $options = json_decode($_POST['options'] ?? '{}', true);
+        
+        if (!$user_id) {
+            self::send_error('Invalid user ID');
+        }
+        
+        $user = get_user_by('id', $user_id);
+        if (!$user) {
+            self::send_error('User not found');
+        }
+        
+        // Get user and descendants data
+        $descendants = self::get_user_descendants($user_id);
+        $all_users = array_merge([
+            [
+                'id' => $user->ID,
+                'display_name' => $user->display_name,
+                'email' => $user->user_email,
+                'role' => $user->roles[0] ?? '',
+                'role_display' => self::get_role_display_name($user->roles[0] ?? ''),
+                'program' => get_user_meta($user->ID, 'program', true),
+                'site' => get_user_meta($user->ID, 'site', true),
+                'registration_date' => $user->user_registered,
+                'depth' => 0,
+                'training' => self::get_user_training_data($user->ID)
+            ]
+        ], self::flatten_descendants($descendants));
+        
+        // Generate CSV content
+        $csv_content = self::generate_csv_content($all_users, $options);
+        
+        // Set headers for CSV download
+        $filename = 'team_export_' . $user->display_name . '_' . date('Y-m-d_H-i-s') . '.csv';
+        $filename = sanitize_file_name($filename);
+        
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        
+        echo $csv_content;
+        exit;
+    }
+
+    /**
+     * Get user training data
+     */
+    private static function get_user_training_data(int $user_id): array {
+        if (!function_exists('learndash_user_get_enrolled_courses')) {
+            return [
+                'courses_enrolled' => 0,
+                'courses_completed' => 0,
+                'certificates_earned' => 0,
+                'completion_rate' => 0
+            ];
+        }
+        
+        $enrolled_courses = learndash_user_get_enrolled_courses($user_id);
+        $completed_courses = [];
+        
+        foreach ($enrolled_courses as $course_id) {
+            if (learndash_course_completed($user_id, $course_id)) {
+                $completed_courses[] = $course_id;
+            }
+        }
+        
+        $certificates = [];
+        if (function_exists('learndash_get_user_certificates')) {
+            $certificates = learndash_get_user_certificates($user_id);
+        }
+        
+        return [
+            'courses_enrolled' => count($enrolled_courses),
+            'courses_completed' => count($completed_courses),
+            'certificates_earned' => count($certificates),
+            'completion_rate' => count($enrolled_courses) > 0 ? round((count($completed_courses) / count($enrolled_courses)) * 100, 1) : 0
+        ];
+    }
+
+    /**
+     * Flatten descendants tree into a flat array
+     */
+    private static function flatten_descendants(array $descendants, int $depth = 1): array {
+        $flattened = [];
+        
+        foreach ($descendants as $descendant) {
+            $descendant['depth'] = $depth;
+            if (!isset($descendant['training'])) {
+                $descendant['training'] = self::get_user_training_data($descendant['id']);
+            }
+            
+            $children = $descendant['children'] ?? [];
+            unset($descendant['children']);
+            
+            $flattened[] = $descendant;
+            
+            if (!empty($children)) {
+                $flattened = array_merge($flattened, self::flatten_descendants($children, $depth + 1));
+            }
+        }
+        
+        return $flattened;
+    }
+
+    /**
+     * Generate CSV content
+     */
+    private static function generate_csv_content(array $users, array $options): string {
+        $csv_lines = [];
+        
+        // Build header row
+        $headers = ['Hierarchy Level'];
+        
+        if ($options['include_basic'] ?? true) {
+            $headers = array_merge($headers, ['Name', 'Email', 'Username', 'Role', 'Registration Date']);
+        }
+        
+        if ($options['include_assignment'] ?? true) {
+            $headers = array_merge($headers, ['Program', 'Site']);
+        }
+        
+        if ($options['include_training'] ?? true) {
+            $headers = array_merge($headers, ['Courses Enrolled', 'Courses Completed', 'Certificates Earned', 'Completion Rate %']);
+        }
+        
+        $csv_lines[] = '"' . implode('","', $headers) . '"';
+        
+        // Build data rows
+        foreach ($users as $user) {
+            $row = [];
+            
+            // Hierarchy level
+            $level_indicator = str_repeat('  ', $user['depth']) . ($user['depth'] > 0 ? '└─ ' : '');
+            $row[] = $level_indicator . ($user['depth'] == 0 ? 'Team Leader' : 'Team Member');
+            
+            if ($options['include_basic'] ?? true) {
+                $row[] = $user['display_name'];
+                $row[] = $user['email'];
+                $row[] = get_user_by('id', $user['id'])->user_login ?? '';
+                $row[] = $user['role_display'];
+                $row[] = date('M j, Y', strtotime($user['registration_date']));
+            }
+            
+            if ($options['include_assignment'] ?? true) {
+                $row[] = $user['program'] ?: 'Not assigned';
+                $row[] = $user['site'] ?: 'Not assigned';
+            }
+            
+            if ($options['include_training'] ?? true) {
+                $row[] = $user['training']['courses_enrolled'];
+                $row[] = $user['training']['courses_completed'];
+                $row[] = $user['training']['certificates_earned'];
+                $row[] = $user['training']['completion_rate'];
+            }
+            
+            // Escape and quote each field
+            $escaped_row = array_map(function($field) {
+                return '"' . str_replace('"', '""', $field) . '"';
+            }, $row);
+            
+            $csv_lines[] = implode(',', $escaped_row);
+        }
+        
+        return implode("\n", $csv_lines);
     }
 } 

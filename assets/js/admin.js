@@ -281,6 +281,9 @@ jQuery(document).ready(function($) {
         // Create modal for user details
         const modal = createModal('User Details: ' + userName);
         
+        // Show loading state
+        modal.find('.modal-content').addClass('loading').html('<div class="modal-loading">Loading user details...</div>');
+        
         // Load user details via AJAX
         $.ajax({
             url: dashboard_ajax.ajax_url,
@@ -291,11 +294,15 @@ jQuery(document).ready(function($) {
                 user_id: userId
             },
             success: function(response) {
-                if (response.success) {
+                modal.find('.modal-content').removeClass('loading');
+                if (response.success && response.data.html) {
                     modal.find('.modal-content').html(response.data.html);
                 } else {
-                    modal.find('.modal-content').html('<p>Error loading user details.</p>');
+                    modal.find('.modal-content').html('<p>Error loading user details: ' + (response.data.message || 'Unknown error') + '</p>');
                 }
+            },
+            error: function() {
+                modal.find('.modal-content').removeClass('loading').html('<p>Error loading user details. Please try again.</p>');
             }
         });
     }
